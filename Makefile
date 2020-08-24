@@ -7,10 +7,10 @@ all: the-rp
 .PHONY: the-rp
 
 the-rp: main.go httpproxy/*.go upstream/*.go
-	go build $(LDFLAGS) main.go
+	go build $(LDFLAGS)  -o the-rp main.go
 
 linux: main.go httpproxy/*.go upstream/*.go
-	GOOS=linux GOARCH=amd64 go build $(LDFLAGS) main.go
+	GOOS=linux GOARCH=amd64 go build $(LDFLAGS) -o the-rp main.go 
 
 check:
 	go test ./...
