@@ -1,8 +1,8 @@
 package httpproxy
 
 import (
+	"net"
 	"net/http"
-	"strings"
 	"time"
 
 	"go.uber.org/zap"
@@ -19,10 +19,7 @@ func AddLogHandler(h http.Handler, accesslogger *zap.Logger) http.Handler {
 		defer func() {
 			end := time.Now()
 			ptime := end.Sub(start)
-			remoteAddr := r.RemoteAddr
-			if i := strings.LastIndexByte(remoteAddr, ':'); i > -1 {
-				remoteAddr = remoteAddr[:i]
-			}
+			remoteAddr, _, _ := net.SplitHostPort(r.RemoteAddr)
 			accesslogger.Info(
 				"-",
 				zap.String("time", start.Format("2006/01/02 15:04:05 MST")),

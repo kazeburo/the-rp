@@ -165,13 +165,11 @@ func (u *Upstream) GetN(maxIP int, remote, path string) ([]*IP, error) {
 		return nil, errors.New("No upstream hosts")
 	}
 
-	hostPortSplit := strings.Split(remote, ":")
-	srcAddr := hostPortSplit[0]
-
 	switch u.balancing {
 	case "fixed":
 		return u.getNByHash(maxIP, u.host)
 	case "iphash":
+		srcAddr, _, _ := net.SplitHostPort(remote)
 		return u.getNByHash(maxIP, srcAddr)
 	case "pathhash":
 		return u.getNByHash(maxIP, path)
