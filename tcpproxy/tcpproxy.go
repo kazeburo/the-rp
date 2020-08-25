@@ -75,6 +75,13 @@ func (p *Proxy) Shutdown(ctx context.Context) error {
 func (p *Proxy) Serve() error {
 	for {
 		conn, err := p.listener.Accept()
+		start := time.Now()
+		p.accesslogger.Info("log",
+			zap.String("time", start.Format("2006/01/02 15:04:05 MST")),
+			zap.String("status", "Connected"),
+			zap.String("listener", p.listener.Addr().String()),
+			zap.String("remote-addr", conn.RemoteAddr().String()))
+
 		if err != nil {
 			if ne, ok := err.(net.Error); ok {
 				if ne.Temporary() {
@@ -97,12 +104,12 @@ func (p *Proxy) Serve() error {
 		p.wg.Add(1)
 		go func(c net.Conn) {
 			defer p.wg.Done()
-			p.handleConn(c)
+			p.handleConn(c, start)
 		}(conn)
 	}
 }
 
-func (p *Proxy) handleConn(c net.Conn) error {
+func (p *Proxy) handleConn(c net.Conn, start time.Time) error {
 	readLen := int64(0)
 	writeLen := int64(0)
 	hasError := false
@@ -112,11 +119,6 @@ func (p *Proxy) handleConn(c net.Conn) error {
 		zap.String("listener", p.listener.Addr().String()),
 		zap.String("remote-addr", c.RemoteAddr().String()),
 	)
-
-	p.accesslogger.Info("log",
-		zap.String("status", "Connected"),
-		zap.String("listener", p.listener.Addr().String()),
-		zap.String("remote-addr", c.RemoteAddr().String()))
 
 	ips, err := p.upstream.GetN(p.maxRetry, c.RemoteAddr().String(), p.listener.Addr().String())
 	if err != nil {
@@ -152,11 +154,15 @@ func (p *Proxy) handleConn(c net.Conn) error {
 		if hasError {
 			status = "Failed"
 		}
+		end := time.Now()
+		ptime := end.Sub(start)
 		p.accesslogger.Info("log",
+			zap.String("time", start.Format("2006/01/02 15:04:05 MST")),
 			zap.String("status", status),
 			zap.String("listener", p.listener.Addr().String()),
 			zap.String("remote-addr", c.RemoteAddr().String()),
 			zap.String("upstream", ip.Host),
+			zap.Float64("ptime", ptime.Seconds()),
 			zap.Int64("read", readLen),
 			zap.Int64("write", writeLen),
 		)

@@ -87,6 +87,7 @@ func makeTransport(keepaliveConns, maxConnsPerHost int, proxyConnectTimeout, pro
 		ExpectContinueTimeout: 1 * time.Second,
 		// self-customized values
 		MaxIdleConnsPerHost:   keepaliveConns,
+		DisableKeepAlives:     keepaliveConns == 0,
 		MaxConnsPerHost:       maxConnsPerHost,
 		ResponseHeaderTimeout: proxyReadTimeout,
 	}
