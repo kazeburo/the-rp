@@ -15,6 +15,7 @@ import (
 	"syscall"
 	"time"
 
+	proxyproto "github.com/armon/go-proxyproto"
 	stats_api "github.com/fukata/golang-stats-api-handler"
 	"github.com/jessevdk/go-flags"
 	"github.com/kazeburo/the-rp/httpproxy"
@@ -40,8 +41,9 @@ type cmdOpts struct {
 	LogRotateTime       int64         `long:"access-log-rotate-time" default:"1440" description:"Interval minutes between file rotation"`
 	Mode                string        `long:"mode" default:"http" description:"proxy mode. tcp and http are supported" choice:"http" choice:"tcp"`
 	Upstream            string        `long:"upstream" required:"true" description:"upstream server: upstream-server:port"`
+	ProxyProtocol       bool          `long:"proxy-protocol" description:"use proxy-proto for listen (BOTH)"`
 	ProxyConnectTimeout time.Duration `long:"proxy-connect-timeout" default:"10s" description:"timeout of connection to upstream (BOTH)"`
-	ProxyReadTimeout    time.Duration `long:"proxy-read-timeout" default:"60s" description:"timeout of reading response from upstream (HTTP_"`
+	ProxyReadTimeout    time.Duration `long:"proxy-read-timeout" default:"60s" description:"timeout of reading response from upstream (HTTP)"`
 	ReadTimeout         int           `long:"read-timeout" default:"30" description:"timeout of reading request (HTTP)"`
 	WriteTimeout        int           `long:"write-timeout" default:"90" description:"timeout of writing response (HTTP)"`
 	ShutdownTimeout     time.Duration `long:"shutdown-timeout" default:"8h"  description:"timeout to wait for all connections to be closed. (BOTH)"`
@@ -203,6 +205,10 @@ func _mainHTTP(opts cmdOpts, upstream *upstream.Upstream, accesslogger, logger *
 		listen = listens[0]
 	}
 
+	if opts.ProxyProtocol {
+		listen = &proxyproto.Listener{Listener: listen}
+	}
+
 	if err := server.Serve(listen); err != http.ErrServerClosed {
 		logger.Error("Error in Serve", zap.Error(err))
 		return 1
@@ -231,6 +237,10 @@ func _mainTCP(opts cmdOpts, upstream *upstream.Upstream, accesslogger, logger *z
 		listen = l
 	} else {
 		listen = listens[0]
+	}
+
+	if opts.ProxyProtocol {
+		listen = &proxyproto.Listener{Listener: listen}
 	}
 
 	server := tcpproxy.New(listen, upstream, opts.ProxyConnectTimeout, opts.MaxConnectRerty, accesslogger, logger)

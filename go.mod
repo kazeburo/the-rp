@@ -3,6 +3,7 @@ module github.com/kazeburo/the-rp
 go 1.14
 
 require (
+	github.com/armon/go-proxyproto v0.0.0-20200108142055-f0b8253b1507
 	github.com/fastly/go-utils v0.0.0-20180712184237-d95a45783239 // indirect
 	github.com/fukata/golang-stats-api-handler v1.0.0
 	github.com/jehiah/go-strftime v0.0.0-20171201141054-1d33003b3869 // indirect
