@@ -14,4 +14,3 @@ release:
   github:
     owner: kazeburo
     name: the-rp
-    goos:
