@@ -20,13 +20,18 @@ Application Options:
       --read-timeout=                               timeout of reading request (HTTP) (default: 30)
       --write-timeout=                              timeout of writing response (HTTP) (default: 90)
       --shutdown-timeout=                           timeout to wait for all connections to be closed. (BOTH) (default: 8h)
-  -c, --keepalive-conns=                            maximum keepalive connections for upstream. disable keepalive when keepalive-conns is 0 (HTTP) (default: 10)
+      --keepalive-conns=                            maximum keepalive connections for upstream.
+                                                    keepalive is disabled when keepalive-conns is 0 (HTTP) (default: 10)
       --max-conns=                                  maximum connections for upstream (HTTP) (default: 0)
       --max-connect-retry=                          number of max connection retry (BOTH) (default: 3)
       --max-fails=                                  number of unsuccessful attempts (BOTH) (default: 1)
       --refresh-interval=                           interval seconds to refresh upstream resolver (BOTH) (default: 3s)
-      --balancing=[leastconn|iphash|fixed|pathhash] balancing mode connection to upstream. iphash: remote ip based, pathhash: requested path based(http only), fixed: upstream host based
-                                                    (BOTH) (default: leastconn)
+      --balancing=[leastconn|iphash|fixed|pathhash] balancing mode connection to upstream
+                                                    - leastconn: least connection
+                                                    - iphash: remote ip based
+                                                    - pathhash: requested path based(http only)
+                                                    - fixed: upstream host based (BOTH)
+                                                    (default: leastconn)
 
 Help Options:
   -h, --help                                        Show this help message

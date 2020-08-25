@@ -47,12 +47,12 @@ type cmdOpts struct {
 	ReadTimeout         int           `long:"read-timeout" default:"30" description:"timeout of reading request (HTTP)"`
 	WriteTimeout        int           `long:"write-timeout" default:"90" description:"timeout of writing response (HTTP)"`
 	ShutdownTimeout     time.Duration `long:"shutdown-timeout" default:"8h"  description:"timeout to wait for all connections to be closed. (BOTH)"`
-	KeepaliveConns      int           `short:"c" default:"10" long:"keepalive-conns" description:"maximum keepalive connections for upstream. disable keepalive when keepalive-conns is 0 (HTTP)"`
+	KeepaliveConns      int           `default:"10" long:"keepalive-conns" description:"maximum keepalive connections for upstream.\nkeepalive is disabled when keepalive-conns is 0 (HTTP)"`
 	MaxConns            int           `long:"max-conns" default:"0" description:"maximum connections for upstream (HTTP)"`
 	MaxConnectRerty     int           `long:"max-connect-retry" default:"3" description:"number of max connection retry (BOTH)"`
 	MaxFails            int           `long:"max-fails" default:"1" description:"number of unsuccessful attempts (BOTH)"`
 	RefreshInterval     time.Duration `long:"refresh-interval" default:"3s" description:"interval seconds to refresh upstream resolver (BOTH)"`
-	BalancingMode       string        `long:"balancing" default:"leastconn" description:"balancing mode connection to upstream. iphash: remote ip based, pathhash: requested path based(http only), fixed: upstream host based (BOTH)" choice:"leastconn" choice:"iphash" choice:"fixed" choice:"pathhash"`
+	BalancingMode       string        `long:"balancing" default:"leastconn" description:"balancing mode connection to upstream\n- leastconn: least connection\n- iphash: remote ip based\n- pathhash: requested path based(http only)\n- fixed: upstream host based (BOTH)\n" choice:"leastconn" choice:"iphash" choice:"fixed" choice:"pathhash"`
 }
 
 func printVersion() {
