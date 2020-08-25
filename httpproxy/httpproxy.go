@@ -6,7 +6,6 @@ import (
 	"io"
 	"net"
 	"net/http"
-	"net/url"
 	"strings"
 	"sync"
 	"time"
@@ -106,12 +105,11 @@ func NewProxy(version string, upstream *upstream.Upstream, keepaliveConns, maxCo
 	}
 }
 
-func (proxy *Proxy) ServeHTTP(writer http.ResponseWriter, req *http.Request) {
-	cs := &State{}
-	originalRequest := req.WithContext(context.WithValue(req.Context(), ConnectErrorKey, cs))
+func (proxy *Proxy) ServeHTTP(writer http.ResponseWriter, originalRequest *http.Request) {
 
 	// Create a new proxy request object by coping the original request.
 	proxyRequest := proxy.copyRequest(originalRequest)
+
 	ips, err := proxy.upstream.GetN(proxy.maxRetry, originalRequest.RemoteAddr, originalRequest.URL.Path)
 	if err != nil {
 		writer.WriteHeader(http.StatusBadGateway)
@@ -195,19 +193,15 @@ func (proxy *Proxy) ServeHTTP(writer http.ResponseWriter, req *http.Request) {
 
 // Create a new proxy request with some modifications from an original request.
 func (proxy *Proxy) copyRequest(originalRequest *http.Request) *http.Request {
-	proxyRequest := new(http.Request)
-	proxyURL := new(url.URL)
-	*proxyRequest = *originalRequest
-	*proxyURL = *originalRequest.URL
-	proxyRequest.URL = proxyURL
+	cs := &State{}
+	proxyRequest := originalRequest.WithContext(context.WithValue(originalRequest.Context(), ConnectErrorKey, cs))
+
 	proxyRequest.Proto = "HTTP/1.1"
 	proxyRequest.ProtoMajor = 1
 	proxyRequest.ProtoMinor = 1
 	proxyRequest.Close = false
 	proxyRequest.Header = make(http.Header)
 	proxyRequest.URL.Scheme = "http"
-	proxyRequest.URL.Path = originalRequest.URL.Path
-	proxyRequest.Host = originalRequest.Host
 
 	// Copy all header fields except ignoredHeaderNames'.
 	nv := 0
