@@ -5,6 +5,7 @@ import (
 	"errors"
 	"io"
 	"net"
+	"net/http"
 	"strings"
 	"sync"
 	"time"
@@ -76,11 +77,6 @@ func (p *Proxy) Serve() error {
 	for {
 		conn, err := p.listener.Accept()
 		start := time.Now()
-		p.accesslogger.Info("log",
-			zap.String("time", start.Format("2006/01/02 15:04:05 MST")),
-			zap.String("status", "Connected"),
-			zap.String("listener", p.listener.Addr().String()),
-			zap.String("remote-addr", conn.RemoteAddr().String()))
 
 		if err != nil {
 			if ne, ok := err.(net.Error); ok {
@@ -112,7 +108,7 @@ func (p *Proxy) Serve() error {
 func (p *Proxy) handleConn(c net.Conn, start time.Time) error {
 	readLen := int64(0)
 	writeLen := int64(0)
-	hasError := false
+	remoteAddr, _, _ := net.SplitHostPort(c.RemoteAddr().String())
 
 	logger := p.logger.With(
 		// zap.Uint64("seq", h.sq.Next()),
@@ -124,6 +120,18 @@ func (p *Proxy) handleConn(c net.Conn, start time.Time) error {
 	if err != nil {
 		logger.Error("Failed to get upstream", zap.Error(err))
 		c.Close()
+		end := time.Now()
+		ptime := end.Sub(start)
+		p.accesslogger.Info("log",
+			zap.String("time", start.Format("2006/01/02 15:04:05 MST")),
+			zap.Int("status", http.StatusBadGateway),
+			zap.String("host", p.listener.Addr().String()),
+			zap.String("remote_addr", remoteAddr),
+			zap.String("upstream", ""),
+			zap.Float64("ptime", ptime.Seconds()),
+			zap.Int64("read", readLen),
+			zap.Int64("size", writeLen),
+		)
 		return err
 	}
 
@@ -142,29 +150,41 @@ func (p *Proxy) handleConn(c net.Conn, start time.Time) error {
 	if err != nil {
 		logger.Error("Giveup to connect backends", zap.Error(err))
 		c.Close()
-		hasError = true
-		return err
-	}
-
-	logger = logger.With(zap.String("upstream", ip.Host))
-
-	defer func() {
-		p.upstream.Release(ip)
-		status := "Suceeded"
-		if hasError {
-			status = "Failed"
-		}
 		end := time.Now()
 		ptime := end.Sub(start)
 		p.accesslogger.Info("log",
 			zap.String("time", start.Format("2006/01/02 15:04:05 MST")),
-			zap.String("status", status),
-			zap.String("listener", p.listener.Addr().String()),
-			zap.String("remote-addr", c.RemoteAddr().String()),
+			zap.Int("status", http.StatusGatewayTimeout),
+			zap.String("host", p.listener.Addr().String()),
+			zap.String("remote_addr", remoteAddr),
 			zap.String("upstream", ip.Host),
 			zap.Float64("ptime", ptime.Seconds()),
 			zap.Int64("read", readLen),
-			zap.Int64("write", writeLen),
+			zap.Int64("size", writeLen),
+		)
+		return err
+	}
+
+	logger = logger.With(zap.String("upstream", ip.Host))
+	hasError := false
+
+	defer func() {
+		p.upstream.Release(ip)
+		end := time.Now()
+		ptime := end.Sub(start)
+		status := http.StatusOK
+		if hasError {
+			status = http.StatusInternalServerError
+		}
+		p.accesslogger.Info("log",
+			zap.String("time", start.Format("2006/01/02 15:04:05 MST")),
+			zap.Int("status", status),
+			zap.String("host", p.listener.Addr().String()),
+			zap.String("remote_addr", remoteAddr),
+			zap.String("upstream", ip.Host),
+			zap.Float64("ptime", ptime.Seconds()),
+			zap.Int64("read", readLen),
+			zap.Int64("size", writeLen),
 		)
 	}()
 
