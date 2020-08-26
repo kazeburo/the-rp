@@ -50,10 +50,10 @@ func New(l net.Listener, u *upstream.Upstream, t time.Duration, maxRetry int, ac
 
 // Shutdown :
 func (p *Proxy) Shutdown(ctx context.Context) error {
-	p.done <- struct{}{}
 	p.logger.Info("Go shutdown",
 		zap.String("listen", p.listener.Addr().String()),
 	)
+	close(p.done)
 	p.listener.Close()
 	c := make(chan struct{})
 	go func() {
