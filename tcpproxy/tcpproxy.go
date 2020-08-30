@@ -181,7 +181,7 @@ func (p *Proxy) handleConn(c net.Conn, start time.Time) error {
 			zap.Int("status", status),
 			zap.String("host", p.listener.Addr().String()),
 			zap.String("remote_addr", remoteAddr),
-			zap.String("upstream", ip.Host),
+			zap.String("upstream", ip.Original),
 			zap.Float64("ptime", ptime.Seconds()),
 			zap.Int64("read", readLen),
 			zap.Int64("size", writeLen),

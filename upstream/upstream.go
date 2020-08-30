@@ -75,6 +75,11 @@ func New(upstream, balancing string, maxFails int, interval time.Duration, logge
 	return um, nil
 }
 
+// Host :
+func (u *Upstream) Host() string {
+	return u.host + ":" + u.port
+}
+
 // RefreshIP : resolve hostname
 func (u *Upstream) RefreshIP(ctx context.Context) ([]*IP, error) {
 	u.mu.Lock()
@@ -259,6 +264,9 @@ func (u *Upstream) getNByLC(maxIP int) ([]*IP, error) {
 
 // Use : Increment counter
 func (u *Upstream) Use(o *IP) {
+	if o == nil {
+		return
+	}
 	u.mu.Lock()
 	defer u.mu.Unlock()
 	o.busy = o.busy + 1
@@ -266,6 +274,9 @@ func (u *Upstream) Use(o *IP) {
 
 // Fail : Increment counter
 func (u *Upstream) Fail(o *IP) {
+	if o == nil {
+		return
+	}
 	u.mu.Lock()
 	defer u.mu.Unlock()
 	o.fail = o.fail + 1
@@ -273,6 +284,9 @@ func (u *Upstream) Fail(o *IP) {
 
 // Release : decrement counter
 func (u *Upstream) Release(o *IP) {
+	if o == nil {
+		return
+	}
 	u.mu.Lock()
 	defer u.mu.Unlock()
 	o.busy = o.busy - 1
