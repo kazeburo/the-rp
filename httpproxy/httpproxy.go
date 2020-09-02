@@ -5,7 +5,6 @@ import (
 	"crypto/tls"
 	"fmt"
 	"io"
-	"log"
 	"net"
 	"net/http"
 	"strings"
@@ -93,7 +92,7 @@ func (proxy *Proxy) makeTransport(hostport string) http.RoundTripper {
 	if err != nil {
 		host = hostport
 	}
-	log.Printf("host %s => %s ", hostport, host)
+	proxy.logger.Info("make transport", zap.String("host", hostport))
 	baseDialFunc := (&net.Dialer{
 		Timeout:   proxy.opts.ProxyConnectTimeout,
 		KeepAlive: 30 * time.Second,
@@ -124,7 +123,6 @@ func (proxy *Proxy) makeTransport(hostport string) http.RoundTripper {
 		TLSClientConfig: &tls.Config{
 			ServerName: host,
 		},
-		// TLSClientConfigを上書きしてもHTTP/2を使えるように
 		ForceAttemptHTTP2: true,
 	}
 }
