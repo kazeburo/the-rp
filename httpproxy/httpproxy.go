@@ -2,14 +2,18 @@ package httpproxy
 
 import (
 	"context"
+	"crypto/tls"
 	"fmt"
 	"io"
+	"log"
 	"net"
 	"net/http"
 	"strings"
 	"sync"
 	"time"
 
+	"github.com/karlseguin/ccache"
+	"github.com/kazeburo/the-rp/opts"
 	"github.com/kazeburo/the-rp/upstream"
 	"go.uber.org/zap"
 )
@@ -17,6 +21,9 @@ import (
 type contextKey string
 
 const httpStatusClientClosedRequest = 499
+const maxCacheSize = 200
+const cachePruneSize = 20
+const maxCacheAge = 8 * time.Hour
 
 // ConnectErrorKey :
 var ConnectErrorKey contextKey = "connectErrorConextKey"
@@ -50,21 +57,45 @@ func (c *State) IsFail() bool {
 
 // Proxy : Provide host-based proxy server.
 type Proxy struct {
-	Version      string
-	Transport    http.RoundTripper
-	upstream     *upstream.Upstream
-	logger       *zap.Logger
-	maxRetry     int
-	overrideHost string
+	defaultTransport http.RoundTripper
+	upstream         *upstream.Upstream
+	opts             *opts.Cmd
+	cache            *ccache.Cache
+	logger           *zap.Logger
 }
 
 var pool = sync.Pool{
 	New: func() interface{} { return make([]byte, 32*1024) },
 }
 
-func makeTransport(keepaliveConns, maxConnsPerHost int, proxyConnectTimeout, proxyReadTimeout time.Duration) http.RoundTripper {
+// NewProxy :  Create a request-based reverse-proxy.
+func NewProxy(upstream *upstream.Upstream, opts *opts.Cmd, logger *zap.Logger) *Proxy {
+	// transport := makeTransport(keepaliveConns, maxConnsPerHost, proxyConnectTimeout, proxyReadTimeout)
+	ccache := ccache.New(ccache.Configure().MaxSize(maxCacheSize).ItemsToPrune(cachePruneSize))
+
+	proxy := &Proxy{
+		upstream: upstream,
+		opts:     opts,
+		cache:    ccache,
+		logger:   logger,
+	}
+
+	if opts.Mode == "http" || opts.OverrideHost != "" {
+		transport := proxy.makeTransport(opts.OverrideHost)
+		proxy.defaultTransport = transport
+	}
+
+	return proxy
+}
+
+func (proxy *Proxy) makeTransport(hostport string) http.RoundTripper {
+	host, _, err := net.SplitHostPort(hostport)
+	if err != nil {
+		host = hostport
+	}
+	log.Printf("host %s => %s ", hostport, host)
 	baseDialFunc := (&net.Dialer{
-		Timeout:   proxyConnectTimeout,
+		Timeout:   proxy.opts.ProxyConnectTimeout,
 		KeepAlive: 30 * time.Second,
 		DualStack: true,
 	}).DialContext
@@ -83,28 +114,34 @@ func makeTransport(keepaliveConns, maxConnsPerHost int, proxyConnectTimeout, pro
 		Proxy:                 http.ProxyFromEnvironment,
 		DialContext:           dialFunc,
 		IdleConnTimeout:       30 * time.Second,
-		TLSHandshakeTimeout:   proxyConnectTimeout,
+		TLSHandshakeTimeout:   proxy.opts.ProxyConnectTimeout,
 		ExpectContinueTimeout: 1 * time.Second,
 		// self-customized values
-		MaxIdleConnsPerHost:   keepaliveConns,
-		DisableKeepAlives:     keepaliveConns == 0,
-		MaxConnsPerHost:       maxConnsPerHost,
-		ResponseHeaderTimeout: proxyReadTimeout,
+		MaxIdleConnsPerHost:   proxy.opts.KeepaliveConns,
+		DisableKeepAlives:     proxy.opts.KeepaliveConns == 0,
+		MaxConnsPerHost:       proxy.opts.MaxConns,
+		ResponseHeaderTimeout: proxy.opts.ProxyReadTimeout,
+		TLSClientConfig: &tls.Config{
+			ServerName: host,
+		},
+		// TLSClientConfigを上書きしてもHTTP/2を使えるように
+		ForceAttemptHTTP2: true,
 	}
 }
 
-// NewProxy :  Create a request-based reverse-proxy.
-func NewProxy(version string, upstream *upstream.Upstream, overrideHost string, keepaliveConns, maxConnsPerHost int, proxyConnectTimeout, proxyReadTimeout time.Duration, maxRetry int, logger *zap.Logger) *Proxy {
-	transport := makeTransport(keepaliveConns, maxConnsPerHost, proxyConnectTimeout, proxyReadTimeout)
-
-	return &Proxy{
-		Version:      version,
-		Transport:    transport,
-		upstream:     upstream,
-		logger:       logger,
-		maxRetry:     maxRetry,
-		overrideHost: overrideHost,
+func (proxy *Proxy) transport(req *http.Request) (http.RoundTripper, error) {
+	if proxy.defaultTransport != nil {
+		return proxy.defaultTransport, nil
 	}
+	item, err := proxy.cache.Fetch(req.Host, maxCacheAge, func() (interface{}, error) {
+		tr := proxy.makeTransport(req.Host)
+		return tr, nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	transport := item.Value().(http.RoundTripper)
+	return transport, nil
 }
 
 func (proxy *Proxy) ServeHTTP(writer http.ResponseWriter, originalRequest *http.Request) {
@@ -112,9 +149,27 @@ func (proxy *Proxy) ServeHTTP(writer http.ResponseWriter, originalRequest *http.
 	// Create a new proxy request object by coping the original request.
 	proxyRequest := proxy.copyRequest(originalRequest)
 
-	ips, err := proxy.upstream.GetN(proxy.maxRetry, originalRequest.RemoteAddr, originalRequest.URL.Path)
+	ips, err := proxy.upstream.GetN(proxy.opts.MaxConnectRerty, originalRequest.RemoteAddr, originalRequest.URL.Path)
 	if err != nil {
+		proxy.logger.Error("ErrorFromProxy",
+			zap.String("request_host", originalRequest.Host),
+			zap.String("request_path", originalRequest.URL.Path),
+			zap.String("proxy_host", proxyRequest.URL.Host),
+			zap.String("proxy_scheme", proxyRequest.URL.Scheme),
+			zap.Error(err))
 		writer.WriteHeader(http.StatusBadGateway)
+		return
+	}
+
+	tr, err := proxy.transport(proxyRequest)
+	if err != nil {
+		proxy.logger.Error("ErrorFromProxy",
+			zap.String("request_host", originalRequest.Host),
+			zap.String("request_path", originalRequest.URL.Path),
+			zap.String("proxy_host", proxyRequest.URL.Host),
+			zap.String("proxy_scheme", proxyRequest.URL.Scheme),
+			zap.Error(err))
+		writer.WriteHeader(http.StatusInternalServerError)
 		return
 	}
 
@@ -123,7 +178,7 @@ func (proxy *Proxy) ServeHTTP(writer http.ResponseWriter, originalRequest *http.
 		proxy.upstream.Use(ip)
 		defer proxy.upstream.Release(ip)
 		// Convert a request into a response by using its Transport.
-		response, err := proxy.Transport.RoundTrip(proxyRequest)
+		response, err := tr.RoundTrip(proxyRequest)
 		if err != nil {
 			logger := proxy.logger.With(
 				zap.String("request_host", originalRequest.Host),
@@ -203,9 +258,9 @@ func (proxy *Proxy) copyRequest(originalRequest *http.Request) *http.Request {
 	proxyRequest.ProtoMinor = 1
 	proxyRequest.Close = false
 	proxyRequest.Header = make(http.Header)
-	proxyRequest.URL.Scheme = "http"
-	if proxy.overrideHost != "" {
-		proxyRequest.Host = proxy.overrideHost
+	proxyRequest.URL.Scheme = proxy.opts.Mode
+	if proxy.opts.OverrideHost != "" {
+		proxyRequest.Host = proxy.opts.OverrideHost
 	} else {
 		proxyRequest.Host = originalRequest.Host
 	}
