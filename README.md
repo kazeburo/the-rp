@@ -14,6 +14,8 @@ Application Options:
       --access-log-rotate-time=                     Interval minutes between file rotation (default: 1440)
       --mode=[http|tcp]                             proxy mode. tcp and http are supported (default: http)
       --upstream=                                   upstream server: upstream-server:port
+      --override-host=                              Hostname override host header (HTTP)
+                                                    By default pass through the requested Host
       --proxy-protocol                              use proxy-proto for listen (BOTH)
       --proxy-connect-timeout=                      timeout of connection to upstream (BOTH) (default: 10s)
       --proxy-read-timeout=                         timeout of reading response from upstream (HTTP) (default: 60s)
