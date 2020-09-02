@@ -41,6 +41,7 @@ type cmdOpts struct {
 	LogRotateTime       int64         `long:"access-log-rotate-time" default:"1440" description:"Interval minutes between file rotation"`
 	Mode                string        `long:"mode" default:"http" description:"proxy mode. tcp and http are supported" choice:"http" choice:"tcp"`
 	Upstream            string        `long:"upstream" required:"true" description:"upstream server: upstream-server:port"`
+	OverrideHost        string        `long:"override-host" description:"Hostname override host header (HTTP)\nBy default pass through the requested Host"`
 	ProxyProtocol       bool          `long:"proxy-protocol" description:"use proxy-proto for listen (BOTH)"`
 	ProxyConnectTimeout time.Duration `long:"proxy-connect-timeout" default:"10s" description:"timeout of connection to upstream (BOTH)"`
 	ProxyReadTimeout    time.Duration `long:"proxy-read-timeout" default:"60s" description:"timeout of reading response from upstream (HTTP)"`
@@ -162,7 +163,7 @@ func _main() int {
 
 func _mainHTTP(opts cmdOpts, upstream *upstream.Upstream, accesslogger, logger *zap.Logger) int {
 
-	var handler http.Handler = httpproxy.NewProxy(Version, upstream, opts.KeepaliveConns, opts.MaxConns, opts.ProxyConnectTimeout, opts.ProxyReadTimeout, opts.MaxConnectRerty, logger)
+	var handler http.Handler = httpproxy.NewProxy(Version, upstream, opts.OverrideHost, opts.KeepaliveConns, opts.MaxConns, opts.ProxyConnectTimeout, opts.ProxyReadTimeout, opts.MaxConnectRerty, logger)
 	handler = addStatsHandler(handler)
 	handler = httpproxy.AddLogHandler(handler, accesslogger)
 

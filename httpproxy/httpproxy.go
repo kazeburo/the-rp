@@ -50,11 +50,12 @@ func (c *State) IsFail() bool {
 
 // Proxy : Provide host-based proxy server.
 type Proxy struct {
-	Version   string
-	Transport http.RoundTripper
-	upstream  *upstream.Upstream
-	logger    *zap.Logger
-	maxRetry  int
+	Version      string
+	Transport    http.RoundTripper
+	upstream     *upstream.Upstream
+	logger       *zap.Logger
+	maxRetry     int
+	overrideHost string
 }
 
 var pool = sync.Pool{
@@ -93,15 +94,16 @@ func makeTransport(keepaliveConns, maxConnsPerHost int, proxyConnectTimeout, pro
 }
 
 // NewProxy :  Create a request-based reverse-proxy.
-func NewProxy(version string, upstream *upstream.Upstream, keepaliveConns, maxConnsPerHost int, proxyConnectTimeout, proxyReadTimeout time.Duration, maxRetry int, logger *zap.Logger) *Proxy {
+func NewProxy(version string, upstream *upstream.Upstream, overrideHost string, keepaliveConns, maxConnsPerHost int, proxyConnectTimeout, proxyReadTimeout time.Duration, maxRetry int, logger *zap.Logger) *Proxy {
 	transport := makeTransport(keepaliveConns, maxConnsPerHost, proxyConnectTimeout, proxyReadTimeout)
 
 	return &Proxy{
-		Version:   version,
-		Transport: transport,
-		upstream:  upstream,
-		logger:    logger,
-		maxRetry:  maxRetry,
+		Version:      version,
+		Transport:    transport,
+		upstream:     upstream,
+		logger:       logger,
+		maxRetry:     maxRetry,
+		overrideHost: overrideHost,
 	}
 }
 
@@ -202,6 +204,11 @@ func (proxy *Proxy) copyRequest(originalRequest *http.Request) *http.Request {
 	proxyRequest.Close = false
 	proxyRequest.Header = make(http.Header)
 	proxyRequest.URL.Scheme = "http"
+	if proxy.overrideHost != "" {
+		proxyRequest.Host = proxy.overrideHost
+	} else {
+		proxyRequest.Host = originalRequest.Host
+	}
 
 	// Copy all header fields except ignoredHeaderNames'.
 	nv := 0
