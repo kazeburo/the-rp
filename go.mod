@@ -9,6 +9,7 @@ require (
 	github.com/jehiah/go-strftime v0.0.0-20171201141054-1d33003b3869 // indirect
 	github.com/jessevdk/go-flags v1.4.0
 	github.com/jonboulle/clockwork v0.2.0 // indirect
+	github.com/karlseguin/ccache v2.0.3+incompatible
 	github.com/lestrrat-go/file-rotatelogs v2.3.0+incompatible
 	github.com/lestrrat-go/server-starter v0.0.0-20200204225643-53093363107d
 	github.com/lestrrat-go/strftime v1.0.3 // indirect
