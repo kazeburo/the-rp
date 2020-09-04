@@ -2,7 +2,6 @@ package upstream
 
 import (
 	"context"
-	"fmt"
 	"math/rand"
 	"net"
 	"sort"
@@ -10,6 +9,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/kazeburo/the-rp/opts"
 	"github.com/pkg/errors"
 	"github.com/stathat/consistent"
 	"go.uber.org/zap"
@@ -17,19 +17,18 @@ import (
 
 // Upstream struct
 type Upstream struct {
+	opts       *opts.Cmd
 	port       string
 	host       string
 	ips        []*IP
 	iph        map[string]*IP
 	csum       string
 	consistent *consistent.Consistent
-	balancing  string
 	logger     *zap.Logger
 	mu         sync.Mutex
 	// current resolved record version
-	version  uint64
-	cancel   context.CancelFunc
-	maxFails int
+	version uint64
+	cancel  context.CancelFunc
 }
 
 // IP : IP with counter
@@ -44,24 +43,21 @@ type IP struct {
 }
 
 // New :
-func New(upstream, balancing string, maxFails int, interval time.Duration, logger *zap.Logger) (*Upstream, error) {
-	hostPortSplit := strings.Split(upstream, ":")
-	if len(hostPortSplit) < 2 {
-		return nil, fmt.Errorf("No port passed to upstream: %s", upstream)
+func New(opts *opts.Cmd, logger *zap.Logger) (*Upstream, error) {
+	h, p, err := net.SplitHostPort(opts.Upstream)
+	if err != nil {
+		return nil, err
 	}
-	h := hostPortSplit[0]
-	p := hostPortSplit[1]
 
 	ctx, cancel := context.WithCancel(context.Background())
 
 	um := &Upstream{
-		host:      h,
-		port:      p,
-		version:   0,
-		balancing: balancing,
-		logger:    logger,
-		cancel:    cancel,
-		maxFails:  maxFails,
+		opts:    opts,
+		host:    h,
+		port:    p,
+		version: 0,
+		logger:  logger,
+		cancel:  cancel,
 	}
 
 	ips, err := um.RefreshIP(ctx)
@@ -71,7 +67,7 @@ func New(upstream, balancing string, maxFails int, interval time.Duration, logge
 	if len(ips) < 1 {
 		return nil, errors.New("Could not resolv hostname")
 	}
-	go um.Run(ctx, interval)
+	go um.Run(ctx, opts.RefreshInterval)
 	return um, nil
 }
 
@@ -165,7 +161,7 @@ func (u *Upstream) GetN(maxIP int, remote, path string) ([]*IP, error) {
 		return nil, errors.New("No upstream hosts")
 	}
 
-	switch u.balancing {
+	switch u.opts.BalancingMode {
 	case "fixed":
 		return u.getNByHash(maxIP, u.host)
 	case "iphash":
@@ -195,7 +191,7 @@ func (u *Upstream) getNByHash(maxIP int, key string) ([]*IP, error) {
 		if !ok {
 			continue
 		}
-		if ipa.fail >= u.maxFails {
+		if ipa.fail >= u.opts.MaxFails {
 			continue
 		}
 		ips = append(ips, ipa)
@@ -236,7 +232,7 @@ func (u *Upstream) getNByLC(maxIP int) ([]*IP, error) {
 
 	ips := make([]*IP, 0, maxIP)
 	for _, ipa := range u.ips {
-		if ipa.fail >= u.maxFails {
+		if ipa.fail >= u.opts.MaxFails {
 			continue
 		}
 		ips = append(ips, ipa)

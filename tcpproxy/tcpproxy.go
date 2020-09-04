@@ -10,6 +10,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/kazeburo/the-rp/opts"
 	"github.com/kazeburo/the-rp/upstream"
 	"go.uber.org/zap"
 )
@@ -22,11 +23,10 @@ const (
 type Proxy struct {
 	listener     net.Listener
 	upstream     *upstream.Upstream
-	timeout      time.Duration
+	opts         *opts.Cmd
 	done         chan struct{}
 	logger       *zap.Logger
 	accesslogger *zap.Logger
-	maxRetry     int
 	wg           *sync.WaitGroup
 }
 
@@ -34,16 +34,15 @@ type Proxy struct {
 var ErrServerClosed = errors.New("tcp: Server closed")
 
 // New create new proxy
-func New(l net.Listener, u *upstream.Upstream, t time.Duration, maxRetry int, accesslogger, logger *zap.Logger) *Proxy {
+func New(l net.Listener, u *upstream.Upstream, opts *opts.Cmd, accesslogger, logger *zap.Logger) *Proxy {
 	wg := &sync.WaitGroup{}
 	return &Proxy{
+		opts:         opts,
 		listener:     l,
 		upstream:     u,
-		timeout:      t,
 		done:         make(chan struct{}),
 		logger:       logger,
 		accesslogger: accesslogger,
-		maxRetry:     maxRetry,
 		wg:           wg,
 	}
 }
@@ -116,7 +115,7 @@ func (p *Proxy) handleConn(c net.Conn, start time.Time) error {
 		zap.String("remote-addr", c.RemoteAddr().String()),
 	)
 
-	ips, err := p.upstream.GetN(p.maxRetry, c.RemoteAddr().String(), p.listener.Addr().String())
+	ips, err := p.upstream.GetN(p.opts.MaxConnectRerty, c.RemoteAddr().String(), p.listener.Addr().String())
 	if err != nil {
 		logger.Error("Failed to get upstream", zap.Error(err))
 		c.Close()
@@ -139,7 +138,7 @@ func (p *Proxy) handleConn(c net.Conn, start time.Time) error {
 	var ip *upstream.IP
 	for _, ip = range ips {
 		p.upstream.Use(ip)
-		s, err = net.DialTimeout("tcp", ip.Host, p.timeout)
+		s, err = net.DialTimeout("tcp", ip.Host, p.opts.ProxyConnectTimeout)
 		if err == nil {
 			break
 		}

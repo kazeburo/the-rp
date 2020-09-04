@@ -122,7 +122,7 @@ func _main() int {
 	}
 
 	logger, _ := zap.NewProduction()
-	upstream, err := upstream.New(opts.Upstream, opts.BalancingMode, opts.MaxFails, opts.RefreshInterval, logger)
+	upstream, err := upstream.New(opts, logger)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -222,7 +222,7 @@ func _mainTCP(opts *opts.Cmd, upstream *upstream.Upstream, accesslogger, logger 
 		listen = &proxyproto.Listener{Listener: listen}
 	}
 
-	server := tcpproxy.New(listen, upstream, opts.ProxyConnectTimeout, opts.MaxConnectRerty, accesslogger, logger)
+	server := tcpproxy.New(listen, upstream, opts, accesslogger, logger)
 
 	idleConnsClosed := make(chan struct{})
 	go func() {
