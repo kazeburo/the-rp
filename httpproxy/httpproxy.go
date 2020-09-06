@@ -7,6 +7,7 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"net/url"
 	"strings"
 	"sync"
 	"time"
@@ -24,9 +25,6 @@ const maxCacheSize = 200
 const cachePruneSize = 20
 const maxCacheAge = 8 * time.Hour
 
-// ConnectErrorKey :
-var ConnectErrorKey contextKey = "connectErrorConextKey"
-
 // These headers won't be copied from original request to proxy request.
 var ignoredHeaderNames = map[string]struct{}{
 	"Connection":          struct{}{},
@@ -37,21 +35,6 @@ var ignoredHeaderNames = map[string]struct{}{
 	"Trailers":            struct{}{},
 	"Transfer-Encoding":   struct{}{},
 	"Upgrade":             struct{}{},
-}
-
-// State :
-type State struct {
-	e bool
-}
-
-// Fail :
-func (c *State) Fail() {
-	c.e = true
-}
-
-// IsFail :
-func (c *State) IsFail() bool {
-	return c.e
 }
 
 // Proxy : Provide host-based proxy server.
@@ -66,6 +49,12 @@ type Proxy struct {
 var pool = sync.Pool{
 	New: func() interface{} { return make([]byte, 32*1024) },
 }
+
+type connError struct {
+	e error
+}
+
+func (ce *connError) Error() string { return ce.e.Error() }
 
 // NewProxy :  Create a request-based reverse-proxy.
 func NewProxy(upstream *upstream.Upstream, opts *opts.Cmd, logger *zap.Logger) *Proxy {
@@ -104,7 +93,7 @@ func (proxy *Proxy) makeTransport(hostport string) http.RoundTripper {
 			return conn, nil
 		}
 		if err != context.Canceled {
-			ctx.Value(ConnectErrorKey).(*State).Fail()
+			return nil, &connError{err}
 		}
 		return nil, err
 	}
@@ -184,18 +173,14 @@ func (proxy *Proxy) ServeHTTP(writer http.ResponseWriter, originalRequest *http.
 				zap.String("proxy_host", proxyRequest.URL.Host),
 				zap.String("proxy_scheme", proxyRequest.URL.Scheme),
 			)
-			cs, ok := proxyRequest.Context().Value(ConnectErrorKey).(*State)
-			if !ok {
-				logger.Error("ErrorFromProxy", zap.Error(fmt.Errorf("ConnectErrorKey not found in conext")))
-				writer.WriteHeader(http.StatusInternalServerError)
-				break
-			} else if cs.IsFail() && i+1 < len(ips) {
+
+			if _, ok := err.(*connError); ok {
 				proxy.upstream.Fail(ip)
-				// Retry
-				logger.Error("ErrorFromProxy", zap.Error(fmt.Errorf("%v ... retry", err)))
-				continue
-			} else if cs.IsFail() {
-				proxy.upstream.Fail(ip)
+				if i+1 < len(ips) {
+					// Retry
+					logger.Warn("ErrorFromProxy", zap.Error(fmt.Errorf("%v ... retry", err)))
+					continue
+				}
 			}
 
 			if netErr, ok := err.(net.Error); ok && netErr.Timeout() {
@@ -248,8 +233,11 @@ func (proxy *Proxy) ServeHTTP(writer http.ResponseWriter, originalRequest *http.
 
 // Create a new proxy request with some modifications from an original request.
 func (proxy *Proxy) copyRequest(originalRequest *http.Request) *http.Request {
-	cs := &State{}
-	proxyRequest := originalRequest.WithContext(context.WithValue(originalRequest.Context(), ConnectErrorKey, cs))
+	proxyRequest := new(http.Request)
+	proxyURL := new(url.URL)
+	*proxyRequest = *originalRequest
+	*proxyURL = *originalRequest.URL
+	proxyRequest.URL = proxyURL
 
 	proxyRequest.Proto = "HTTP/1.1"
 	proxyRequest.ProtoMajor = 1
