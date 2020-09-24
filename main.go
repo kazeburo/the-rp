@@ -25,6 +25,8 @@ import (
 	rotatelogs "github.com/lestrrat-go/file-rotatelogs"
 	"github.com/lestrrat-go/server-starter/listener"
 	"github.com/pkg/errors"
+	"github.com/valyala/fasthttp"
+	"github.com/valyala/fasthttp/fasthttpadaptor"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 )
@@ -43,14 +45,15 @@ Compiler: %s %s
 		runtime.Version())
 }
 
-func addStatsHandler(h http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if strings.Index(r.URL.Path, "/.api/stats") == 0 {
-			stats_api.Handler(w, r)
-		} else {
-			h.ServeHTTP(w, r)
+func addStatsHandler(h fasthttp.RequestHandler) fasthttp.RequestHandler {
+	return func(ctx *fasthttp.RequestCtx) {
+		switch string(ctx.Path()) {
+		case "/.api/stats":
+			fasthttpadaptor.NewFastHTTPHandlerFunc(stats_api.Handler)(ctx)
+		default:
+			h(ctx)
 		}
-	})
+	}
 }
 
 func logWriter(logDir string, logRotate int64, logRotateTime int64) (io.Writer, error) {
@@ -141,11 +144,13 @@ func _main() int {
 
 func _mainHTTP(opts *opts.Cmd, upstream *upstream.Upstream, accesslogger, logger *zap.Logger) int {
 
-	var handler http.Handler = httpproxy.NewProxy(upstream, opts, logger)
-	handler = addStatsHandler(handler)
-	handler = httpproxy.AddLogHandler(handler, accesslogger)
+	proxy := httpproxy.NewProxy(upstream, opts, logger)
+	handler := addStatsHandler(proxy.Handler)
+	if opts.LogDir != "none" {
+		handler = httpproxy.AddLogHandler(handler, accesslogger)
+	}
 
-	server := http.Server{
+	server := fasthttp.Server{
 		Handler:      handler,
 		ReadTimeout:  time.Duration(opts.ReadTimeout) * time.Second,
 		WriteTimeout: time.Duration(opts.WriteTimeout) * time.Second,
@@ -157,8 +162,22 @@ func _mainHTTP(opts *opts.Cmd, upstream *upstream.Upstream, accesslogger, logger
 		signal.Notify(sigChan, syscall.SIGTERM)
 		<-sigChan
 		ctx, cancel := context.WithTimeout(context.Background(), opts.ShutdownTimeout)
-		if es := server.Shutdown(ctx); es != nil {
-			logger.Warn("Shutdown error", zap.Error(es))
+		c := make(chan error, 1)
+		go func() {
+			defer close(c)
+			if es := server.Shutdown(); es != nil {
+				c <- es
+				return
+			}
+			c <- nil
+		}()
+		select {
+		case ec := <-c:
+			if ec != nil {
+				logger.Warn("Shutdown error", zap.Error(ec))
+			}
+		case <-ctx.Done():
+			logger.Warn("Shutdown timeout")
 		}
 		cancel()
 		close(idleConnsClosed)
