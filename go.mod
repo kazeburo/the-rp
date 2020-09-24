@@ -16,6 +16,7 @@ require (
 	github.com/pkg/errors v0.9.1
 	github.com/stathat/consistent v1.0.0
 	github.com/tebeka/strftime v0.1.5 // indirect
+	github.com/valyala/fasthttp v1.16.0
 	go.uber.org/zap v1.15.0
 	stathat.com/c/consistent v1.0.0 // indirect
 )
