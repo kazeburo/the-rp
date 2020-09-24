@@ -143,8 +143,9 @@ func _mainHTTP(opts *opts.Cmd, upstream *upstream.Upstream, accesslogger, logger
 
 	var handler http.Handler = httpproxy.NewProxy(upstream, opts, logger)
 	handler = addStatsHandler(handler)
-	handler = httpproxy.AddLogHandler(handler, accesslogger)
-
+	if opts.LogDir != "none" {
+		handler = httpproxy.AddLogHandler(handler, accesslogger)
+	}
 	server := http.Server{
 		Handler:      handler,
 		ReadTimeout:  time.Duration(opts.ReadTimeout) * time.Second,
