@@ -224,6 +224,9 @@ func (proxy *Proxy) Handler(ctx *fasthttp.RequestCtx) {
 
 		ctx.SetBody(res.Body())
 		ctx.SetStatusCode(res.StatusCode())
+		for _, n := range ignoredHeaderNames {
+			res.Header.DelBytes(n)
+		}
 		res.Header.VisitAll(func(k, v []byte) {
 			ctx.Response.Header.SetBytesKV(k, v)
 		})

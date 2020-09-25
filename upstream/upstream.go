@@ -161,6 +161,10 @@ func (u *Upstream) GetN(maxIP int, remote, path string) ([]*IP, error) {
 		return nil, errors.New("No upstream hosts")
 	}
 
+	if len(u.ips) == 1 {
+		return u.ips, nil
+	}
+
 	switch u.opts.BalancingMode {
 	case "fixed":
 		return u.getNByHash(maxIP, u.host)

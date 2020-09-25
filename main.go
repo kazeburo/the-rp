@@ -151,9 +151,11 @@ func _mainHTTP(opts *opts.Cmd, upstream *upstream.Upstream, accesslogger, logger
 	}
 
 	server := fasthttp.Server{
-		Handler:      handler,
-		ReadTimeout:  time.Duration(opts.ReadTimeout) * time.Second,
-		WriteTimeout: time.Duration(opts.WriteTimeout) * time.Second,
+		Handler:            handler,
+		ReadTimeout:        time.Duration(opts.ReadTimeout) * time.Second,
+		WriteTimeout:       time.Duration(opts.WriteTimeout) * time.Second,
+		TCPKeepalive:       true,
+		TCPKeepalivePeriod: 30 * time.Second,
 	}
 
 	idleConnsClosed := make(chan struct{})
